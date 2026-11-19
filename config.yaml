@@ -1,0 +1,32 @@
+# Modifier une valeur puis pousser sur main : le calendrier est régénéré automatiquement.
+
+site_url: https://thedevadvisor.github.io/prayer-calendar
+
+mosques:
+  - slug: annour-ivry-sur-seine
+    url: https://mawaqit.net/fr/annour-ivry-sur-seine
+    output: docs/ivry.ics
+    calendar_name: "🕌 Prières – Annour Ivry"
+
+prayers: [fajr, dhuhr, asr, maghrib, isha]   # ajouter shuruq pour l'afficher
+titles:
+  fajr: "🕌 Fajr"
+  shuruq: "☀️ Chourouq"
+  dhuhr: "🕌 Dhuhr"
+  asr: "🕌 Asr"
+  maghrib: "🕌 Maghrib"
+  isha: "🕌 Isha"
+event_duration_minutes: 10
+transparent: true            # « Disponible », ne bloque pas l'agenda
+location: null               # pas de lieu
+description: ""              # pas de description
+alarm_minutes_before: [0]    # alerte à l'heure de la prière ; [] = aucune
+
+ramadan:
+  enabled: true
+  imsak_minutes_before_fajr: 10
+  imsak_title: "🌙 Imsak"
+  imsak_alarm_minutes_before: [0]
+  maghrib_title: "🌙 Iftar – Maghrib"
+  hijri_adjustment: null     # null = utiliser hijriAdjustment de la mosquée
+  overrides: {}              # ex. 2027: {start: 2027-02-08, end: 2027-03-08} (dates officielles en France)

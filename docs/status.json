@@ -1,0 +1,15 @@
+{
+  "annour-ivry-sur-seine": {
+    "name": "Mosquée ANNOUR - Ivry-Sur-Seine",
+    "calendar_name": "🕌 Prières – Annour Ivry",
+    "ics": "docs/ivry.ics",
+    "table_year": 2026,
+    "snapshots": [
+      2026
+    ],
+    "events": 515,
+    "first_date": "2026-09-20",
+    "last_date": "2026-12-31",
+    "ramadan": []
+  }
+}
