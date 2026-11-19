@@ -3,16 +3,19 @@
 site_url: https://thedevadvisor.github.io/prayer-calendar
 
 mosques:
-  - slug: annour-ivry-sur-seine
-    url: https://mawaqit.net/fr/annour-ivry-sur-seine
-    output: docs/ivry.ics
-    calendar_name: "🕌 Prières – Annour Ivry"
+  - slug: grande-mosquee-de-paris
+    url: https://mawaqit.net/fr/grande-mosquee-de-paris
+    output: docs/prieres.ics
+    calendar_name: "🕌 Prières"
+    uid_prefix: prieres        # UID : prieres-AAAAMMJJ-fajr@prayer-calendar
 
 prayers: [fajr, dhuhr, asr, maghrib, isha]   # ajouter shuruq pour l'afficher
+friday_jumua: true           # le vendredi, Dhuhr devient Jumu'a (même horaire)
 titles:
   fajr: "🕌 Fajr"
   shuruq: "☀️ Chourouq"
   dhuhr: "🕌 Dhuhr"
+  jumua: "🕌 Jumu'a"
   asr: "🕌 Asr"
   maghrib: "🕌 Maghrib"
   isha: "🕌 Isha"

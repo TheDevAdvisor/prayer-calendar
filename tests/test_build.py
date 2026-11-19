@@ -1,6 +1,7 @@
 import copy
 import json
 import shutil
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -10,8 +11,9 @@ from icalendar import Calendar
 from prayer_calendar import build, fetch
 
 ROOT = Path(__file__).resolve().parent.parent
-URL = "https://mawaqit.net/fr/annour-ivry-sur-seine"
-SLUG = "annour-ivry-sur-seine"
+URL = "https://mawaqit.net/fr/grande-mosquee-de-paris"
+SLUG = "grande-mosquee-de-paris"
+ICS = "docs/prieres.ics"
 
 
 def page(conf):
@@ -53,10 +55,11 @@ def snapshot_of(project):
 
 
 def events_of(project):
-    return Calendar.from_ical((project / "docs/ivry.ics").read_bytes()).walk("VEVENT")
+    return Calendar.from_ical((project / ICS).read_bytes()).walk("VEVENT")
 
 
 def test_full_run(project, serve, ivry):
+    # Données de test : le tableau d'Ivry, servi à l'adresse de la mosquée configurée
     serve[URL] = page(ivry)
     assert run(project, "2026-11-19") == 0
 
@@ -65,7 +68,15 @@ def test_full_run(project, serve, ivry):
     assert snapshot["2026-02-01"]["fajr"] == "06:51"
 
     # du 20/09 (J-60) au 31/12 : 103 jours x 5 prières, pas de Ramadan
-    assert len(events_of(project)) == 515
+    events = events_of(project)
+    assert len(events) == 515
+    uids = {str(e["UID"]) for e in events}
+    assert "prieres-20261119-fajr@prayer-calendar" in uids
+    # 14 vendredis dans la fenêtre, chacun avec Jumu'a à la place de Dhuhr
+    fridays = [u for u in uids if date(int(u[8:12]), int(u[12:14]), int(u[14:16])).weekday() == 4]
+    assert sum("-jumua@" in u for u in fridays) == 14
+    assert not any("-dhuhr@" in u for u in fridays)
+
     status = json.loads((project / "docs/status.json").read_text())[SLUG]
     assert status["table_year"] == 2026
     assert status["events"] == 515
@@ -73,9 +84,13 @@ def test_full_run(project, serve, ivry):
     assert status["ramadan"] == []
 
     index = (project / "docs/index.html").read_text()
-    assert 'href="webcal://thedevadvisor.github.io/prayer-calendar/ivry.ics"' in index
-    assert "S'abonner" in index
+    assert 'href="webcal://thedevadvisor.github.io/prayer-calendar/prieres.ics"' in index
+    assert "<h1>🕌 Prières</h1>" in index and "S'abonner" in index and "Horaires : Mawaqit" in index
     assert (project / "docs/.nojekyll").exists()
+
+    # Côté abonné, aucune mention de la mosquée source
+    for published in ((project / ICS).read_text(), index):
+        assert "ANNOUR" not in published.upper() and "IVRY" not in published.upper()
 
 
 def test_same_data_gives_identical_files(project, serve, ivry):
@@ -116,8 +131,8 @@ def test_new_year_table_is_added_without_dropping_the_current_one(project, serve
     assert status["ramadan"] == [{"start": "2027-02-08", "end": "2027-03-08"}]
 
     uids = {str(e["UID"]) for e in events_of(project)}
-    assert f"{SLUG}-20261231-isha@prayer-calendar" in uids
-    assert f"{SLUG}-20270208-imsak@prayer-calendar" in uids
-    assert f"{SLUG}-20270207-imsak@prayer-calendar" not in uids
+    assert "prieres-20261231-isha@prayer-calendar" in uids
+    assert "prieres-20270208-imsak@prayer-calendar" in uids
+    assert "prieres-20270207-imsak@prayer-calendar" not in uids
     # 436 jours x 5 + 29 Imsak
     assert len(uids) == 436 * 5 + 29

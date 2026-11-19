@@ -41,6 +41,20 @@ def test_ramadan_day_adds_imsak_and_renames_maghrib(cfg, days2026):
     assert by_name["maghrib"].title == "🌙 Iftar – Maghrib"
 
 
+def test_friday_dhuhr_becomes_jumua_at_the_same_time(cfg, days2026):
+    friday = "2026-02-06"
+    events = make_events(SLUG, {friday: days2026[friday]}, cfg, TZ, lambda d: False)
+    jumua = events[1]
+    assert jumua.uid == f"{SLUG}-20260206-jumua@prayer-calendar"
+    assert jumua.title == "🕌 Jumu'a"
+    assert jumua.start == to_utc(date(2026, 2, 6), days2026[friday]["dhuhr"], ZoneInfo(TZ))
+    assert not any("-dhuhr@" in e.uid for e in events)
+
+    cfg["friday_jumua"] = False
+    events = make_events(SLUG, {friday: days2026[friday]}, cfg, TZ, lambda d: False)
+    assert events[1].title == "🕌 Dhuhr"
+
+
 def test_ramadan_can_be_disabled(cfg, days2026):
     cfg["ramadan"]["enabled"] = False
     events = make_events(SLUG, {"2026-03-01": days2026["2026-03-01"]}, cfg, TZ, lambda d: True)

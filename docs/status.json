@@ -1,8 +1,8 @@
 {
-  "annour-ivry-sur-seine": {
-    "name": "Mosquée ANNOUR - Ivry-Sur-Seine",
-    "calendar_name": "🕌 Prières – Annour Ivry",
-    "ics": "docs/ivry.ics",
+  "grande-mosquee-de-paris": {
+    "name": "GRANDE MOSQUÉE DE PARIS",
+    "calendar_name": "🕌 Prières",
+    "ics": "docs/prieres.ics",
     "table_year": 2026,
     "snapshots": [
       2026

@@ -24,10 +24,12 @@ DAYS_BEFORE_TODAY = 60
 DEFAULT_TZ = "Europe/Paris"
 DEFAULTS = {
     "prayers": ["fajr", "dhuhr", "asr", "maghrib", "isha"],
+    "friday_jumua": True,
     "titles": {
         "fajr": "🕌 Fajr",
         "shuruq": "☀️ Chourouq",
         "dhuhr": "🕌 Dhuhr",
+        "jumua": "🕌 Jumu'a",
         "asr": "🕌 Asr",
         "maghrib": "🕌 Maghrib",
         "isha": "🕌 Isha",
@@ -108,7 +110,7 @@ def prepare(mosque, cfg, root, today=None):
     def ramadan_day(d):
         return ramadan.is_ramadan(d, adjustment, rcfg["overrides"])
 
-    events = ics.make_events(slug, days, cfg, tz_name, ramadan_day)
+    events = ics.make_events(mosque.get("uid_prefix") or slug, days, cfg, tz_name, ramadan_day)
     calendar_name = mosque.get("calendar_name") or conf.get("name") or slug
     ramadan_used = []
     if rcfg["enabled"]:
@@ -134,16 +136,17 @@ def prepare(mosque, cfg, root, today=None):
 
 
 def render_index(entries, site_url):
+    """Page d'abonnement. Volontairement sans nom de mosquée : seul le nom du calendrier apparaît."""
+    names = html.escape(" · ".join(status["calendar_name"] for status, _ in entries))
     sections = []
     for status, today in entries:
         https_url = f"{site_url.rstrip('/')}/{status['ics'].removeprefix('docs/')}"
         webcal_url = "webcal://" + https_url.split("://", 1)[1]
         first, last = (date.fromisoformat(status[k]) for k in ("first_date", "last_date"))
+        heading = f"<h2>{html.escape(status['calendar_name'])}</h2>\n" if len(entries) > 1 else ""
         sections.append(
             f"""<section>
-<h2>{html.escape(status["calendar_name"])}</h2>
-<p>{html.escape(status["name"] or "")}</p>
-<p>Horaires du {first:%d/%m/%Y} au {last:%d/%m/%Y}. Dernière mise à jour : {today:%d/%m/%Y}.</p>
+{heading}<p>Horaires du {first:%d/%m/%Y} au {last:%d/%m/%Y}. Dernière mise à jour : {today:%d/%m/%Y}.</p>
 <p><a class="button" href="{html.escape(webcal_url)}">S'abonner</a></p>
 <p>Lien https : <a href="{html.escape(https_url)}">{html.escape(https_url)}</a></p>
 </section>"""
@@ -154,16 +157,18 @@ def render_index(entries, site_url):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Calendrier des prières</title>
+<title>{names}</title>
 <style>
 :root {{ color-scheme: light dark; }}
 body {{ font-family: system-ui, sans-serif; max-width: 36rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }}
 a.button {{ display: inline-block; padding: .6rem 1.2rem; border-radius: .5rem; background: #0a7d4f; color: #fff; text-decoration: none; }}
+.source {{ font-size: .85rem; opacity: .7; }}
 </style>
 </head>
 <body>
-<h1>Calendrier des prières</h1>
+<h1>{names}</h1>
 {body}
+<p class="source">Horaires : Mawaqit</p>
 </body>
 </html>
 """

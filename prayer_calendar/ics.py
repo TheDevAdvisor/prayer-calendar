@@ -26,7 +26,7 @@ def to_utc(day, hhmm, tz):
     return datetime.combine(day, time(h, m), tzinfo=tz).astimezone(UTC)
 
 
-def make_events(slug, days, cfg, tz_name, ramadan_day):
+def make_events(uid_prefix, days, cfg, tz_name, ramadan_day):
     """days : {"AAAA-MM-JJ": {"fajr": "HH:MM", ...}}. ramadan_day : date -> bool."""
     tz = ZoneInfo(tz_name)
     duration = timedelta(minutes=cfg["event_duration_minutes"])
@@ -34,7 +34,7 @@ def make_events(slug, days, cfg, tz_name, ramadan_day):
     events = []
 
     def add(day, name, title, start, end, alarms):
-        uid = f"{slug}-{day:%Y%m%d}-{name}@prayer-calendar"
+        uid = f"{uid_prefix}-{day:%Y%m%d}-{name}@prayer-calendar"
         events.append(Event(day, uid, title, start, end, tuple(alarms or ())))
 
     for iso, times in days.items():
@@ -45,11 +45,13 @@ def make_events(slug, days, cfg, tz_name, ramadan_day):
             imsak = fajr - timedelta(minutes=rcfg["imsak_minutes_before_fajr"])
             add(day, "imsak", rcfg["imsak_title"], imsak, fajr, rcfg["imsak_alarm_minutes_before"])
         for prayer in cfg["prayers"]:
-            start = to_utc(day, times[prayer], tz)
-            title = cfg["titles"][prayer]
-            if ramadan and prayer == "maghrib":
+            name, title = prayer, cfg["titles"][prayer]
+            if prayer == "dhuhr" and cfg["friday_jumua"] and day.weekday() == 4:
+                name, title = "jumua", cfg["titles"]["jumua"]
+            elif prayer == "maghrib" and ramadan:
                 title = rcfg["maghrib_title"]
-            add(day, prayer, title, start, start + duration, cfg["alarm_minutes_before"])
+            start = to_utc(day, times[prayer], tz)
+            add(day, name, title, start, start + duration, cfg["alarm_minutes_before"])
 
     return sorted(events, key=lambda e: (e.start, e.uid))
 
