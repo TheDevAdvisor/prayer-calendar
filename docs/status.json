@@ -4,6 +4,7 @@
     "calendar_name": "🕌 Prières",
     "ics": "docs/prieres.ics",
     "table_year": 2026,
+    "provisional": false,
     "snapshots": [
       2026
     ],

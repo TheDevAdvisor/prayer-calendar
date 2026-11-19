@@ -96,9 +96,23 @@ def prepare(mosque, cfg, root, today=None):
     folder = root / "data" / slug
     snapshots = load_snapshots(folder)
     snapshots[table_year] = parse.to_days(months, table_year)
+    all_days = {d: t for y in sorted(snapshots) for d, t in snapshots[y].items()}
+
+    # Tableau de l'an dernier et rien de réel pour cette année : on prolonge sans rien enregistrer.
+    # Dès que la mosquée publie, le vrai snapshot existe et le provisoire disparaît.
+    provisional = table_year < today.year and today.year not in snapshots
+    if provisional:
+        log.warning(
+            "%s : tableau %s pas encore publié, calendrier %s PROVISOIRE reporté depuis %s",
+            slug,
+            today.year,
+            today.year,
+            table_year,
+        )
+        all_days.update(year.provisional_days(months, table_year, today.year, tz_name))
 
     first = (today - timedelta(days=DAYS_BEFORE_TODAY)).isoformat()
-    days = {d: t for y in sorted(snapshots) for d, t in snapshots[y].items() if d >= first}
+    days = {d: t for d, t in all_days.items() if d >= first}
     if not days:
         raise ValueError(f"{slug} : aucun horaire publié après le {first}, rien à servir")
 
@@ -126,6 +140,7 @@ def prepare(mosque, cfg, root, today=None):
         "calendar_name": calendar_name,
         "ics": mosque["output"],
         "table_year": table_year,
+        "provisional": provisional,
         "snapshots": sorted(snapshots),
         "events": len(events),
         "first_date": min(days),

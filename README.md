@@ -9,7 +9,7 @@ Les horaires de prière publiés en calendrier ICS auquel on s'abonne depuis App
 
 Chaque lundi, une GitHub Action lit la page publique Mawaqit de la mosquée, déduit l'année du tableau grâce au passage à l'heure d'été, enregistre le tableau dans `data/<slug>/<année>.json` puis régénère `docs/prieres.ics`, que GitHub Pages sert tel quel.
 
-Le calendrier couvre les 60 derniers jours et tout ce qui est publié après, en piochant dans tous les snapshots. Quand la mosquée publiera l'année suivante, elle s'ajoutera sans couper l'année en cours. Le vendredi, Dhuhr s'affiche comme Jumu'a (même horaire), et pendant le Ramadan on ajoute l'Imsak et l'Iftar.
+Le calendrier couvre les 60 derniers jours et tout ce qui est publié après, en piochant dans tous les snapshots. Quand la mosquée publiera l'année suivante, elle s'ajoutera sans couper l'année en cours. En décembre et janvier, l'Action tourne tous les jours. Si au 1er janvier la mosquée affiche encore le tableau de l'an dernier, l'année en cours est servie en provisoire (`"provisional": true` dans `status.json`) : chaque horaire est reporté au même instant UTC, donc le changement d'heure tombe au bon jour. Rien n'est enregistré dans `data/`, et le vrai tableau prend la place dès sa publication. Le vendredi, Dhuhr s'affiche comme Jumu'a (même horaire), et pendant le Ramadan on ajoute l'Imsak et l'Iftar.
 
 Si Mawaqit est injoignable ou que sa page change de forme, l'Action échoue (GitHub envoie un e-mail) et le dernier calendrier publié reste en ligne. `docs/status.json` résume ce qui est servi : année du tableau, nombre d'événements, période couverte, dates du Ramadan.
 

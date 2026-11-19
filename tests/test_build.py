@@ -79,6 +79,7 @@ def test_full_run(project, serve, ivry):
 
     status = json.loads((project / "docs/status.json").read_text())[SLUG]
     assert status["table_year"] == 2026
+    assert status["provisional"] is False
     assert status["events"] == 515
     assert (status["first_date"], status["last_date"]) == ("2026-09-20", "2026-12-31")
     assert status["ramadan"] == []
@@ -114,25 +115,58 @@ def test_failure_overwrites_nothing(project, serve, ivry, broken):
     assert snapshot_of(project) == before
 
 
-def test_new_year_table_is_added_without_dropping_the_current_one(project, serve, ivry):
+def status_of(project):
+    return json.loads((project / "docs/status.json").read_text())[SLUG]
+
+
+def fajr_utc(project, day):
+    (event,) = [e for e in events_of(project) if str(e["UID"]) == f"prieres-{day}-fajr@prayer-calendar"]
+    return event["DTSTART"].dt.strftime("%H:%M")
+
+
+def test_table_2027_read_on_2026_12_20_is_added_next_to_2026(project, serve, ivry):
     serve[URL] = page(ivry)
-    run(project, "2026-12-20")
+    run(project, "2026-12-19")
     snapshot_2026 = (project / f"data/{SLUG}/2026.json").read_bytes()
 
     serve[URL] = page(table_2027(ivry))
-    assert run(project, "2026-12-21") == 0
+    assert run(project, "2026-12-20") == 0
     assert (project / f"data/{SLUG}/2026.json").read_bytes() == snapshot_2026
     assert (project / f"data/{SLUG}/2027.json").exists()
 
-    status = json.loads((project / "docs/status.json").read_text())[SLUG]
-    assert status["table_year"] == 2027
+    status = status_of(project)
+    assert (status["table_year"], status["provisional"]) == (2027, False)
     assert status["snapshots"] == [2026, 2027]
-    assert (status["first_date"], status["last_date"]) == ("2026-10-22", "2027-12-31")
+    assert (status["first_date"], status["last_date"]) == ("2026-10-21", "2027-12-31")
     assert status["ramadan"] == [{"start": "2027-02-08", "end": "2027-03-08"}]
 
     uids = {str(e["UID"]) for e in events_of(project)}
     assert "prieres-20261231-isha@prayer-calendar" in uids
     assert "prieres-20270208-imsak@prayer-calendar" in uids
     assert "prieres-20270207-imsak@prayer-calendar" not in uids
-    # 436 jours x 5 + 29 Imsak
-    assert len(uids) == 436 * 5 + 29
+    # 437 jours x 5 + 29 Imsak
+    assert len(uids) == 437 * 5 + 29
+
+
+def test_table_2026_read_on_2027_01_02_gives_a_provisional_2027(project, serve, ivry, caplog):
+    serve[URL] = page(ivry)
+    assert run(project, "2027-01-02") == 0
+    assert "PROVISOIRE" in caplog.text
+    # Le tableau reste rangé sous son année, rien n'est inventé pour 2027
+    assert sorted(p.name for p in (project / f"data/{SLUG}").iterdir()) == ["2026.json"]
+
+    status = status_of(project)
+    assert (status["table_year"], status["provisional"]) == (2026, True)
+    assert (status["first_date"], status["last_date"]) == ("2026-11-03", "2027-12-31")
+    assert status["ramadan"] == [{"start": "2027-02-08", "end": "2027-03-08"}]
+    # 28/03/2027, jour du passage à l'heure d'été : 05:07 CET en 2026 -> 04:07 UTC (06:07 à Paris),
+    # à 2 min du premier Fajr d'été du tableau (06:05 = 04:05 UTC), et non 05:07 comme une copie naïve
+    assert fajr_utc(project, "20270328") == "04:07"
+
+    # La mosquée publie 2027 : le vrai tableau remplace le provisoire, mêmes UID
+    serve[URL] = page(table_2027(ivry))
+    assert run(project, "2027-01-09") == 0
+    status = status_of(project)
+    assert (status["table_year"], status["provisional"]) == (2027, False)
+    assert status["snapshots"] == [2026, 2027]
+    assert fajr_utc(project, "20270328") == "04:05"
