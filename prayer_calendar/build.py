@@ -96,6 +96,7 @@ def prepare(mosque, cfg, root, today=None):
     folder = root / "data" / slug
     snapshots = load_snapshots(folder)
     snapshots[table_year] = parse.to_days(months, table_year)
+    parse.check_plausible(snapshots[table_year], tz_name)
     all_days = {d: t for y in sorted(snapshots) for d, t in snapshots[y].items()}
 
     # Tableau de l'an dernier et rien de réel pour cette année : on prolonge sans rien enregistrer.

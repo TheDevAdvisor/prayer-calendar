@@ -3,9 +3,15 @@
 import calendar
 import json
 import re
-from datetime import date
+from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 PRAYERS = ("fajr", "shuruq", "dhuhr", "asr", "maghrib", "isha")
+
+# Plus gros écart toléré d'un jour à l'autre, mesuré en UTC pour ignorer les changements d'heure.
+# Un vrai tableau bouge de 1 à 3 min par jour, mais celui de la GMP change de convention au
+# 1er décembre 2026 (Fajr recule de 14 min, Isha avance de 11 min) : il faut de la marge.
+MAX_DAILY_SHIFT = 30
 
 _MARKER = re.compile(r"\blet\s+confData\s*=\s*(?=\{)")
 _TIME = re.compile(r"^(\d{1,2}):(\d{2})$")
@@ -97,3 +103,32 @@ def to_days(months, year):
     if len(days) != expected:
         raise ParseError(f"{len(days)} jours valides pour {year}, {expected} attendus")
     return days
+
+
+def check_plausible(days, tz_name):
+    """Refuse un tableau bien formé mais incohérent, avant qu'il n'écrase le bon snapshot.
+
+    Chaque jour, les six horaires se suivent dans l'ordre, et aucun ne bouge de plus de
+    MAX_DAILY_SHIFT minutes sur la veille. Ça attrape les colonnes décalées, les horaires
+    saisis sur 12 h, un mois recopié ou resté à la mauvaise heure.
+    """
+    tz = ZoneInfo(tz_name)
+    previous = None
+    for key, times in days.items():
+        local = [minutes(times[p]) for p in PRAYERS]
+        if local[-1] < 3 * 60:  # Isha après minuit, possible l'été sous de hautes latitudes
+            local[-1] += 24 * 60
+        if any(a >= b for a, b in zip(local, local[1:])):
+            raise ParseError(f"{key} : horaires dans le désordre {times}")
+        day = date.fromisoformat(key)
+        local_midnight = datetime.combine(day, time(), tzinfo=tz)
+        utc_midnight = datetime.combine(day, time(), tzinfo=UTC)
+        utc = [(local_midnight + timedelta(minutes=m) - utc_midnight) / timedelta(minutes=1) for m in local]
+        if previous:
+            for prayer, before, now in zip(PRAYERS, previous, utc):
+                if abs(now - before) > MAX_DAILY_SHIFT:
+                    raise ParseError(
+                        f"{key} : {prayer} à {times[prayer]} bouge de {now - before:+.0f} min "
+                        f"sur la veille (max {MAX_DAILY_SHIFT})"
+                    )
+        previous = utc

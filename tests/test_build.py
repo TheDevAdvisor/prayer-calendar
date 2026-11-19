@@ -20,10 +20,18 @@ def page(conf):
     return f"<html><script>\n    let confData = {json.dumps(conf)};\n    let lang = 'fr';\n</script></html>"
 
 
+def shift(hhmm, delta):
+    h, m = divmod(int(hhmm[:2]) * 60 + int(hhmm[3:]) + delta, 60)
+    return f"{h:02d}:{m:02d}"
+
+
 def table_2027(ivry):
-    """Le tableau 2026 avec le passage à l'heure d'été déplacé au 28 mars (dernier dimanche de 2027)."""
+    """Le tableau 2026 avec les changements d'heure de 2027 : le 28 mars et le 31 octobre."""
     conf = copy.deepcopy(ivry)
     conf["calendar"][2]["28"] = conf["calendar"][2]["29"]
+    october = conf["calendar"][9]
+    for day in range(25, 31):  # encore à l'heure d'été en 2027
+        october[str(day)] = [shift(t, 60) for t in october[str(day)]]
     return conf
 
 
@@ -111,6 +119,19 @@ def test_failure_overwrites_nothing(project, serve, ivry, broken):
     before = snapshot_of(project)
 
     serve[URL] = broken
+    assert run(project, "2026-11-26") == 1
+    assert snapshot_of(project) == before
+
+
+def test_implausible_table_overwrites_nothing(project, serve, ivry):
+    serve[URL] = page(ivry)
+    run(project, "2026-11-19")
+    before = snapshot_of(project)
+
+    # Bien formé, mais juillet est resté à l'heure d'hiver : 1 h d'écart au 1er juillet
+    broken = copy.deepcopy(ivry)
+    broken["calendar"][6] = {d: [shift(t, -60) for t in times] for d, times in broken["calendar"][6].items()}
+    serve[URL] = page(broken)
     assert run(project, "2026-11-26") == 1
     assert snapshot_of(project) == before
 
