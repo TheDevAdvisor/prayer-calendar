@@ -2,12 +2,16 @@
 
 site_url: https://thedevadvisor.github.io/prayer-calendar
 
+# Texte en bas de la page d'abonnement ("" = rien)
+page_message: "Ce calendrier est partagé gratuitement, en sadaqa jariya. S'il vous est utile, partagez-le autour de vous, et pensez à nous dans vos douas."
+
 mosques:
   - slug: grande-mosquee-de-paris
     url: https://mawaqit.net/fr/grande-mosquee-de-paris
     output: docs/prieres.ics
     calendar_name: "🕌 Prières"
     uid_prefix: prieres        # UID : prieres-AAAAMMJJ-fajr@prayer-calendar
+    source_name: "Grande Mosquée de Paris"   # affiché sur la page, jamais dans le calendrier
 
 prayers: [fajr, dhuhr, asr, maghrib, isha]   # ajouter shuruq pour l'afficher
 friday_jumua: true           # le vendredi, Dhuhr devient Jumu'a (même horaire)

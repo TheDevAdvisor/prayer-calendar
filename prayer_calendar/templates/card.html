@@ -1,0 +1,16 @@
+<section class="card" data-calendar>
+  <p class="kicker">Horaires de prière</p>
+  <h2>$source</h2>
+  <p class="period">Du $first au $last · mis à jour la semaine du $week</p>
+  <div class="actions">
+    <a class="btn primary" data-apple href="$webcal"><span>S'abonner</span><small>iPhone, iPad, Mac</small></a>
+    <a class="btn" data-google href="$google" target="_blank" rel="noopener"><span>Google Agenda</span><small>Android, ordinateur</small></a>
+    <button class="btn" type="button" data-copy="$https"><span>Copier le lien</span><small>Outlook et autres</small></button>
+  </div>
+  <p class="link">Lien du calendrier : <code>$https</code></p>
+  <div class="today" data-today hidden>
+    <div class="today-head"><h3 data-day></h3><p class="badge" data-next></p></div>
+    <ol data-list></ol>
+  </div>
+  <script type="application/json" data-times>$times</script>
+</section>
