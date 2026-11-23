@@ -75,31 +75,38 @@ def test_full_run(project, serve, ivry):
     assert len(snapshot) == 365
     assert snapshot["2026-02-01"]["fajr"] == "06:51"
 
-    # du 20/09 (J-60) au 31/12 : 103 jours x 5 prières, pas de Ramadan
+    # du lundi 14/09 (9 semaines avant le lundi 16/11) au 31/12 : 109 jours x 5 prières, pas de Ramadan
     events = events_of(project)
-    assert len(events) == 515
+    assert len(events) == 545
     uids = {str(e["UID"]) for e in events}
     assert "prieres-20261119-fajr@prayer-calendar" in uids
-    # 14 vendredis dans la fenêtre, chacun avec Jumu'a à la place de Dhuhr
+    # 15 vendredis dans la fenêtre, chacun avec Jumu'a à la place de Dhuhr
     fridays = [u for u in uids if date(int(u[8:12]), int(u[12:14]), int(u[14:16])).weekday() == 4]
-    assert sum("-jumua@" in u for u in fridays) == 14
+    assert sum("-jumua@" in u for u in fridays) == 15
     assert not any("-dhuhr@" in u for u in fridays)
 
     status = json.loads((project / "docs/status.json").read_text())[SLUG]
     assert status["table_year"] == 2026
     assert status["provisional"] is False
-    assert status["events"] == 515
-    assert (status["first_date"], status["last_date"]) == ("2026-09-20", "2026-12-31")
+    assert status["events"] == 545
+    assert (status["first_date"], status["last_date"]) == ("2026-09-14", "2026-12-31")
     assert status["ramadan"] == []
 
     index = (project / "docs/index.html").read_text()
     assert 'href="webcal://thedevadvisor.github.io/prayer-calendar/prieres.ics"' in index
-    assert "<h1>🕌 Prières</h1>" in index and "S'abonner" in index and "Horaires : Mawaqit" in index
+    assert "cid=webcal%3A%2F%2Fthedevadvisor.github.io%2Fprayer-calendar%2Fprieres.ics" in index
+    assert "Du 14/09/2026 au 31/12/2026 · mis à jour la semaine du 16/11/2026" in index
+    assert "<title>Horaires de prière · Grande Mosquée de Paris</title>" in index
+    assert "sadaqa jariya" in index and "$" not in index  # aucun champ du gabarit oublié
+    # Horaires embarqués pour « aujourd'hui » : du lundi de la semaine à la fin du tableau
+    assert '"2026-11-16":[' in index and '"2026-11-15":[' not in index and '"2026-12-31":[' in index
     assert (project / "docs/.nojekyll").exists()
 
-    # Côté abonné, aucune mention de la mosquée source
-    for published in ((project / ICS).read_text(), index):
-        assert "ANNOUR" not in published.upper() and "IVRY" not in published.upper()
+    # La page affiche source_name de la config, pas le nom renvoyé par Mawaqit (ici, Ivry)
+    assert "ANNOUR" not in index.upper() and "IVRY" not in index.upper()
+    # Le calendrier lui-même reste générique : aucun nom de mosquée
+    published = (project / ICS).read_text().upper()
+    assert "ANNOUR" not in published and "IVRY" not in published and "GRANDE MOSQU" not in published
 
 
 def test_same_data_gives_identical_files(project, serve, ivry):
@@ -108,6 +115,20 @@ def test_same_data_gives_identical_files(project, serve, ivry):
     before = snapshot_of(project)
     run(project, "2026-11-19")
     assert snapshot_of(project) == before
+
+
+def test_daily_runs_change_files_once_a_week(project, serve, ivry):
+    # L'Action tourne tous les jours : du lundi au dimanche, rien ne bouge, donc pas de commit
+    serve[URL] = page(ivry)
+    run(project, "2026-11-23")
+    monday = snapshot_of(project)
+    for day in range(24, 30):
+        run(project, f"2026-11-{day}")
+        assert snapshot_of(project) == monday
+
+    run(project, "2026-11-30")
+    assert snapshot_of(project) != monday
+    assert status_of(project)["first_date"] == "2026-09-28"
 
 
 @pytest.mark.parametrize(
@@ -158,15 +179,15 @@ def test_table_2027_read_on_2026_12_20_is_added_next_to_2026(project, serve, ivr
     status = status_of(project)
     assert (status["table_year"], status["provisional"]) == (2027, False)
     assert status["snapshots"] == [2026, 2027]
-    assert (status["first_date"], status["last_date"]) == ("2026-10-21", "2027-12-31")
+    assert (status["first_date"], status["last_date"]) == ("2026-10-12", "2027-12-31")
     assert status["ramadan"] == [{"start": "2027-02-08", "end": "2027-03-08"}]
 
     uids = {str(e["UID"]) for e in events_of(project)}
     assert "prieres-20261231-isha@prayer-calendar" in uids
     assert "prieres-20270208-imsak@prayer-calendar" in uids
     assert "prieres-20270207-imsak@prayer-calendar" not in uids
-    # 437 jours x 5 + 29 Imsak
-    assert len(uids) == 437 * 5 + 29
+    # 446 jours x 5 + 29 Imsak
+    assert len(uids) == 446 * 5 + 29
 
 
 def test_table_2026_read_on_2027_01_02_gives_a_provisional_2027(project, serve, ivry, caplog):
@@ -178,7 +199,7 @@ def test_table_2026_read_on_2027_01_02_gives_a_provisional_2027(project, serve, 
 
     status = status_of(project)
     assert (status["table_year"], status["provisional"]) == (2026, True)
-    assert (status["first_date"], status["last_date"]) == ("2026-11-03", "2027-12-31")
+    assert (status["first_date"], status["last_date"]) == ("2026-10-26", "2027-12-31")
     assert status["ramadan"] == [{"start": "2027-02-08", "end": "2027-03-08"}]
     # 28/03/2027, jour du passage à l'heure d'été : 05:07 CET en 2026 -> 04:07 UTC (06:07 à Paris),
     # à 2 min du premier Fajr d'été du tableau (06:05 = 04:05 UTC), et non 05:07 comme une copie naïve

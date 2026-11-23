@@ -9,9 +9,12 @@ import html
 import json
 import logging
 import os
+import re
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from string import Template
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -20,9 +23,13 @@ from . import fetch, ics, parse, ramadan, year
 
 log = logging.getLogger("prayer_calendar")
 
-DAYS_BEFORE_TODAY = 60
+# Le calendrier remonte à 9 semaines avant le lundi courant (63 à 69 jours). L'Action tourne tous
+# les jours, mais tout est calé sur le lundi : sans correction de la mosquée, un commit par semaine.
+WEEKS_BEFORE = 9
 DEFAULT_TZ = "Europe/Paris"
+TEMPLATES = Path(__file__).parent / "templates"
 DEFAULTS = {
+    "page_message": "",
     "prayers": ["fajr", "dhuhr", "asr", "maghrib", "isha"],
     "friday_jumua": True,
     "titles": {
@@ -78,6 +85,11 @@ def load_snapshots(folder):
     }
 
 
+def week_of(day):
+    """Lundi de la semaine de `day`."""
+    return day - timedelta(days=day.weekday())
+
+
 def snapshot_text(days):
     """Une ligne par jour : les diffs Git restent lisibles quand la mosquée corrige un horaire."""
     lines = ",\n".join(f"  {json.dumps(d)}: {json.dumps(t)}" for d, t in days.items())
@@ -112,7 +124,7 @@ def prepare(mosque, cfg, root, today=None):
         )
         all_days.update(year.provisional_days(months, table_year, today.year, tz_name))
 
-    first = (today - timedelta(days=DAYS_BEFORE_TODAY)).isoformat()
+    first = (week_of(today) - timedelta(weeks=WEEKS_BEFORE)).isoformat()
     days = {d: t for d, t in all_days.items() if d >= first}
     if not days:
         raise ValueError(f"{slug} : aucun horaire publié après le {first}, rien à servir")
@@ -148,46 +160,130 @@ def prepare(mosque, cfg, root, today=None):
         "last_date": max(days),
         "ramadan": [{"start": s.isoformat(), "end": e.isoformat()} for s, e in ramadan_used],
     }
-    return files, status, today
+    # Pour la page : les horaires à partir du lundi, que le navigateur affiche pour « aujourd'hui »
+    week = week_of(today).isoformat()
+    page = {
+        "source": mosque.get("source_name") or conf.get("name") or slug,
+        "url": mosque["url"],
+        "tz": tz_name,
+        "days": {d: [t[p] for p in parse.PRAYERS] for d, t in sorted(all_days.items()) if d >= week},
+    }
+    return files, status, today, page
 
 
-def render_index(entries, site_url):
-    """Page d'abonnement. Volontairement sans nom de mosquée : seul le nom du calendrier apparaît."""
-    names = html.escape(" · ".join(status["calendar_name"] for status, _ in entries))
-    sections = []
-    for status, today in entries:
-        https_url = f"{site_url.rstrip('/')}/{status['ics'].removeprefix('docs/')}"
-        webcal_url = "webcal://" + https_url.split("://", 1)[1]
-        first, last = (date.fromisoformat(status[k]) for k in ("first_date", "last_date"))
-        heading = f"<h2>{html.escape(status['calendar_name'])}</h2>\n" if len(entries) > 1 else ""
-        sections.append(
-            f"""<section>
-{heading}<p>Horaires du {first:%d/%m/%Y} au {last:%d/%m/%Y}. Dernière mise à jour : {today:%d/%m/%Y}.</p>
-<p><a class="button" href="{html.escape(webcal_url)}">S'abonner</a></p>
-<p>Lien https : <a href="{html.escape(https_url)}">{html.escape(https_url)}</a></p>
-</section>"""
-        )
-    body = "\n".join(sections)
-    return f"""<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{names}</title>
-<style>
-:root {{ color-scheme: light dark; }}
-body {{ font-family: system-ui, sans-serif; max-width: 36rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }}
-a.button {{ display: inline-block; padding: .6rem 1.2rem; border-radius: .5rem; background: #0a7d4f; color: #fff; text-decoration: none; }}
-.source {{ font-size: .85rem; opacity: .7; }}
-</style>
-</head>
-<body>
-<h1>{names}</h1>
-{body}
-<p class="source">Horaires : Mawaqit</p>
-</body>
-</html>
-"""
+def _template(name):
+    return Template((TEMPLATES / name).read_text(encoding="utf-8"))
+
+
+def _text(value):
+    return html.escape(value, quote=False)
+
+
+def _plain(title):
+    """« 🕌 Fajr » -> « Fajr » : la page affiche les noms sans emoji."""
+    return re.sub(r"^\W+", "", title).strip()
+
+
+def _join_fr(words):
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " et " + words[-1]
+
+
+def _alert_phrase(minutes_before):
+    if not minutes_before:
+        return ""
+    moments = [
+        "à l'heure de chaque prière" if n == 0 else f"{n} min avant"
+        for n in sorted(set(minutes_before), reverse=True)
+    ]
+    return "avec une alerte " + _join_fr(moments)
+
+
+def _features(cfg):
+    names = _join_fr([_plain(cfg["titles"][p]) for p in cfg["prayers"]])
+    alert = _alert_phrase(cfg["alarm_minutes_before"])
+    items = [("🕌", "Les prières du jour", f"{names}, chaque jour{', ' + alert if alert else ''}.")]
+    if cfg["friday_jumua"]:
+        items.append((
+            "🤲",
+            "Jumu'a le vendredi",
+            "Le vendredi, Dhuhr devient Jumu'a, à l'heure de Dhuhr. "
+            "L'heure du prêche peut varier : vérifiez-la auprès de votre mosquée.",
+        ))
+    rcfg = cfg["ramadan"]
+    if rcfg["enabled"]:
+        items.append((
+            "🌙",
+            "Ramadan",
+            f"Pendant le Ramadan, une alerte Imsak {rcfg['imsak_minutes_before_fajr']} min avant Fajr, "
+            "et Maghrib devient l'Iftar.",
+        ))
+    always = "Les horaires se mettent à jour chaque semaine, sans rien refaire de votre côté."
+    if cfg["transparent"]:
+        always += " Les prières sont marquées « disponible » et ne bloquent pas votre agenda."
+    items.append(("🔄", "Toujours à jour", always))
+    return "\n".join(
+        f'    <li><span class="icon" aria-hidden="true">{icon}</span>'
+        f"<div><h3>{_text(title)}</h3><p>{_text(body)}</p></div></li>"
+        for icon, title, body in items
+    )
+
+
+def _card(status, today, page, cfg, site_url):
+    https_url = f"{site_url}/{status['ics'].removeprefix('docs/')}"
+    webcal_url = "webcal://" + https_url.split("://", 1)[1]
+    first, last = (date.fromisoformat(status[k]) for k in ("first_date", "last_date"))
+    rcfg = cfg["ramadan"]
+    labels = {p: _plain(t) for p, t in cfg["titles"].items()}
+    labels |= {"imsak": _plain(rcfg["imsak_title"]), "iftar": _plain(rcfg["maghrib_title"])}
+    data = {
+        "tz": page["tz"],
+        "order": list(parse.PRAYERS),
+        "prayers": cfg["prayers"],
+        "jumua": bool(cfg["friday_jumua"]),
+        "imsak": rcfg["imsak_minutes_before_fajr"],
+        "ramadan": [[r["start"], r["end"]] for r in status["ramadan"]],
+        "labels": labels,
+        "days": page["days"],
+    }
+    return _template("card.html").substitute(
+        source=_text(page["source"]),
+        first=f"{first:%d/%m/%Y}",
+        last=f"{last:%d/%m/%Y}",
+        week=f"{week_of(today):%d/%m/%Y}",
+        webcal=html.escape(webcal_url),
+        google=html.escape("https://calendar.google.com/calendar/r?cid=" + quote(webcal_url, safe="")),
+        https=html.escape(https_url),
+        times=json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/"),
+    )
+
+
+def render_index(entries, cfg):
+    """Page d'abonnement : ce que contient le calendrier, d'où viennent les horaires, comment s'abonner.
+
+    Le nom de la mosquée n'apparaît que sur cette page : le calendrier lui-même reste générique.
+    """
+    site_url = cfg["site_url"].rstrip("/")
+    sources = [page["source"] for _, _, page in entries]
+    names = _join_fr([_plain(cfg["titles"][p]) for p in cfg["prayers"]])
+    alert = _alert_phrase(cfg["alarm_minutes_before"])
+    links = _join_fr([f'<a href="{html.escape(p["url"])}">{_text(p["source"])}</a>' for _, _, p in entries])
+    message = cfg["page_message"]
+    return _template("index.html").substitute(
+        title=_text("Horaires de prière" + (f" · {sources[0]}" if len(sources) == 1 else "")),
+        description=html.escape(
+            f"Horaires de prière ({' · '.join(sources)}) dans votre agenda : iPhone, Mac, Android, Outlook. "
+            "Gratuit, mis à jour chaque semaine."
+        ),
+        page_url=html.escape(site_url + "/"),
+        lead=_text(
+            f"{names} s'ajoutent à votre calendrier{', ' + alert if alert else ''}. "
+            "Vous vous abonnez une fois, et les horaires se mettent ensuite à jour tout seuls."
+        ),
+        cards="\n".join(_card(status, today, page, cfg, site_url) for status, today, page in entries),
+        features=_features(cfg),
+        message=f'<p class="message">{_text(message)}</p>' if message else "",
+        fineprint=f"Source : {links}, via Mawaqit. En cas de doute, l'horaire affiché par votre mosquée fait foi.",
+    )
 
 
 def write_if_changed(path, content):
@@ -228,14 +324,14 @@ def main(argv=None):
     files, statuses, entries, failed = {}, {}, [], False
     for mosque in cfg["mosques"]:
         try:
-            mosque_files, status, today = prepare(mosque, cfg, root, args.today)
+            mosque_files, status, today, page = prepare(mosque, cfg, root, args.today)
         except Exception:
             log.exception("%s : échec, aucun fichier modifié", mosque.get("slug"))
             failed = True
             continue
         files.update(mosque_files)
         statuses[mosque["slug"]] = status
-        entries.append((status, today))
+        entries.append((status, today, page))
         log.info(
             "%s : tableau %s, %s événements du %s au %s, Ramadan %s",
             mosque["slug"],
@@ -250,7 +346,7 @@ def main(argv=None):
 
     docs = root / "docs"
     files[docs / "status.json"] = json.dumps(statuses, indent=2, ensure_ascii=False) + "\n"
-    files[docs / "index.html"] = render_index(entries, cfg["site_url"])
+    files[docs / "index.html"] = render_index(entries, cfg)
     files[docs / ".nojekyll"] = ""
     for path, content in files.items():
         if write_if_changed(path, content):
